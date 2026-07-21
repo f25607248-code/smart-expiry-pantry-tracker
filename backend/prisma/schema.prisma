@@ -1,0 +1,213 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  USER
+  ADMIN
+}
+
+enum Category {
+  FRUITS
+  VEGETABLES
+  DAIRY
+  MEAT
+  SEAFOOD
+  FROZEN
+  BAKERY
+  DRINKS
+  SNACKS
+  CANNED_FOOD
+  CONDIMENTS
+  OTHERS
+}
+
+enum StorageLocation {
+  REFRIGERATOR
+  FREEZER
+  PANTRY
+  CABINET
+}
+
+enum Disposition {
+  CONSUMED
+  WASTED
+  DONATED
+}
+
+enum NotificationType {
+  EXPIRY_TODAY
+  EXPIRY_SOON
+  EXPIRED
+  WEEKLY_REPORT
+  SYSTEM
+}
+
+enum Theme {
+  LIGHT
+  DARK
+  SYSTEM
+}
+
+model User {
+  id                       String    @id @default(cuid())
+  email                    String    @unique
+  passwordHash             String?
+  googleId                 String?   @unique
+  name                     String
+  avatarUrl                String?
+  role                     Role      @default(USER)
+
+  isEmailVerified          Boolean   @default(false)
+  emailVerificationToken   String?   @unique
+  emailVerificationExpires DateTime?
+
+  passwordResetToken       String?   @unique
+  passwordResetExpires     DateTime?
+
+  twoFactorEnabled         Boolean   @default(false)
+  twoFactorSecret          String?
+  twoFactorRecoveryCodes   String[]  @default([])
+
+  theme                    Theme     @default(SYSTEM)
+  language                 String    @default("en")
+  timezone                 String    @default("UTC")
+  currency                 String    @default("USD")
+  measurementUnit          String    @default("metric")
+  notifyEmail              Boolean   @default(true)
+  notifyInApp              Boolean   @default(true)
+  dailySummaryEnabled      Boolean   @default(true)
+  weeklyReportEnabled      Boolean   @default(true)
+
+  createdAt                DateTime  @default(now())
+  updatedAt                DateTime  @updatedAt
+
+  pantryItems              PantryItem[]
+  refreshTokens            RefreshToken[]
+  shoppingLists            ShoppingList[]
+  notifications            Notification[]
+  dispositionLogs          DispositionLog[]
+
+  @@map("users")
+}
+
+model RefreshToken {
+  id        String    @id @default(cuid())
+  tokenHash String    @unique
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  revokedAt DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId])
+  @@map("refresh_tokens")
+}
+
+model PantryItem {
+  id              String          @id @default(cuid())
+  userId          String
+  user            User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  name            String
+  brand           String?
+  category        Category        @default(OTHERS)
+  quantity        Float           @default(1)
+  unit            String          @default("pcs")
+  storageLocation StorageLocation @default(PANTRY)
+  purchaseDate    DateTime        @default(now())
+  expiryDate      DateTime
+  price           Float?
+  barcode         String?
+  notes           String?
+  imageUrl        String?
+
+  isArchived      Boolean         @default(false)
+  archivedAt      DateTime?
+
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  shoppingListItems ShoppingListItem[]
+  dispositionLogs   DispositionLog[]
+
+  @@index([userId])
+  @@index([userId, isArchived])
+  @@index([userId, expiryDate])
+  @@map("pantry_items")
+}
+
+model DispositionLog {
+  id            String       @id @default(cuid())
+  userId        String
+  user          User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  pantryItemId  String?
+  pantryItem    PantryItem?  @relation(fields: [pantryItemId], references: [id], onDelete: SetNull)
+
+  name          String
+  category      Category
+  quantity      Float
+  estimatedValue Float       @default(0)
+  disposition   Disposition
+
+  loggedAt      DateTime     @default(now())
+
+  @@index([userId, loggedAt])
+  @@map("disposition_logs")
+}
+
+model ShoppingList {
+  id        String             @id @default(cuid())
+  userId    String
+  user      User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name      String              @default("Shopping List")
+  createdAt DateTime            @default(now())
+  updatedAt DateTime            @updatedAt
+
+  items     ShoppingListItem[]
+
+  @@index([userId])
+  @@map("shopping_lists")
+}
+
+model ShoppingListItem {
+  id              String        @id @default(cuid())
+  shoppingListId  String
+  shoppingList    ShoppingList  @relation(fields: [shoppingListId], references: [id], onDelete: Cascade)
+
+  name            String
+  quantity        Float         @default(1)
+  unit            String        @default("pcs")
+  estimatedPrice  Float?
+  notes           String?
+  isPurchased     Boolean       @default(false)
+
+  sourcePantryItemId String?
+  sourcePantryItem   PantryItem? @relation(fields: [sourcePantryItemId], references: [id], onDelete: SetNull)
+
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  @@index([shoppingListId])
+  @@map("shopping_list_items")
+}
+
+model Notification {
+  id            String            @id @default(cuid())
+  userId        String
+  user          User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type          NotificationType
+  title         String
+  message       String
+  isRead        Boolean           @default(false)
+  relatedItemId String?
+  createdAt     DateTime          @default(now())
+
+  @@index([userId, isRead])
+  @@map("notifications")
+}
