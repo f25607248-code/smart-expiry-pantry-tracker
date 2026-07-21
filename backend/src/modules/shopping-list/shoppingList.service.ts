@@ -1,8 +1,8 @@
-import jwt from 'jsonwebtoken'
 import { prisma } from '../../lib/prisma.js'
 import { ApiError } from '../../lib/apiError.js'
 import { env } from '../../config/env.js'
 import { expiryDateRangeFor } from '../../lib/expiry.js'
+import { signShareLinkToken, verifyShareLinkToken } from '../../lib/jwt.js'
 
 const listInclude = { items: { orderBy: { createdAt: 'asc' as const } } }
 
@@ -93,25 +93,20 @@ export async function autoAddExpiredItems(userId: string, listId: string) {
   return getList(userId, listId)
 }
 
-const SHARE_TOKEN_TYPE = 'shopping-list-share'
-
 export async function createShareLink(userId: string, listId: string) {
   const list = await prisma.shoppingList.findFirst({ where: { id: listId, userId } })
   if (!list) throw ApiError.notFound('Shopping list not found')
 
-  const token = jwt.sign({ listId, type: SHARE_TOKEN_TYPE }, env.JWT_ACCESS_SECRET, { expiresIn: '30d' })
+  const token = signShareLinkToken({ listId, type: 'shopping-list-share' })
   return { token, url: `${env.CLIENT_URL}/shared/shopping-lists/${token}` }
 }
 
 export async function getSharedList(token: string) {
-  let payload: jwt.JwtPayload
+  let payload: { listId: string }
   try {
-    payload = jwt.verify(token, env.JWT_ACCESS_SECRET) as jwt.JwtPayload
+    payload = verifyShareLinkToken(token)
   } catch {
     throw ApiError.badRequest('Invalid or expired share link')
-  }
-  if (payload.type !== SHARE_TOKEN_TYPE || typeof payload.listId !== 'string') {
-    throw ApiError.badRequest('Invalid share link')
   }
 
   const list = await prisma.shoppingList.findUnique({ where: { id: payload.listId }, include: listInclude })
